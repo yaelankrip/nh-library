@@ -80,7 +80,7 @@ async function identifyBookFromImage(base64, mediaType, onStatus) {
     ? mediaType : "image/jpeg";
   onStatus("🔍 מזהה ספר...");
   const apiKey = window._GEMINI_KEY;
-  const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-002:generateContent?key=${apiKey}`, {
+  const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${apiKey}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -106,7 +106,7 @@ async function identifyBookFromImage(base64, mediaType, onStatus) {
 async function searchBookByTitle(query, onStatus) {
   onStatus("🌐 מחפש...");
   const apiKey = window._GEMINI_KEY;
-  const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-002:generateContent?key=${apiKey}`, {
+  const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${apiKey}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
