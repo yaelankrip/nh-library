@@ -79,22 +79,29 @@ async function identifyBookFromImage(base64, mediaType, onStatus) {
   const safeType = ["image/jpeg","image/png","image/gif","image/webp"].includes(mediaType)
     ? mediaType : "image/jpeg";
   onStatus("🔍 מזהה ספר...");
-  const apiKey = window._GEMINI_KEY;
-  const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${apiKey}`, {
+  const res = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": window._CLAUDE_KEY,
+      "anthropic-version": "2023-06-01",
+      "anthropic-dangerous-direct-browser-access": "true"
+    },
     body: JSON.stringify({
-      contents: [{
-        parts: [
-          { inline_data: { mime_type: safeType, data: base64 } },
-          { text: 'Read the text on this book cover. Return ONLY valid JSON, nothing else: {"title": "...", "author": "..."}' }
+      model: "claude-haiku-4-5-20251001",
+      max_tokens: 256,
+      messages: [{
+        role: "user",
+        content: [
+          { type: "image", source: { type: "base64", media_type: safeType, data: base64 } },
+          { type: "text", text: 'Read the text on this book cover. Return ONLY valid JSON, nothing else: {"title": "...", "author": "..."}' }
         ]
       }]
     })
   });
   if (!res.ok) throw new Error("API " + res.status + ": " + await res.text());
   const data = await res.json();
-  const text = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+  const text = data.content?.[0]?.text || "";
   const match = text.match(/\{[^{}]+\}/);
   if (match) {
     try { return JSON.parse(match[0]); } catch {}
@@ -102,25 +109,29 @@ async function identifyBookFromImage(base64, mediaType, onStatus) {
   return { title: "", author: "" };
 }
 
-// Search for book by title query using Gemini
 async function searchBookByTitle(query, onStatus) {
   onStatus("🌐 מחפש...");
-  const apiKey = window._GEMINI_KEY;
-  const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${apiKey}`, {
+  const res = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": window._CLAUDE_KEY,
+      "anthropic-version": "2023-06-01",
+      "anthropic-dangerous-direct-browser-access": "true"
+    },
     body: JSON.stringify({
-      contents: [{
-        parts: [{
-          text: `What is the full title and author of the book: "${query}"? Return ONLY this JSON with no extra text: {"title": "exact full title", "author": "full author name"}`
-        }]
+      model: "claude-haiku-4-5-20251001",
+      max_tokens: 256,
+      messages: [{
+        role: "user",
+        content: `What is the full title and author of the book: "${query}"? Return ONLY this JSON with no extra text: {"title": "exact full title", "author": "full author name"}`
       }]
     })
   });
   if (!res.ok) throw new Error("API " + res.status);
   const data = await res.json();
   onStatus("📖 מעבד תוצאות...");
-  const text = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+  const text = data.content?.[0]?.text || "";
   const match = text.match(/\{[^{}]*"title"[^{}]*\}/s);
   if (match) {
     try { return JSON.parse(match[0]); } catch {}
