@@ -45,7 +45,8 @@ function formatPhone(val) {
 
 // ═══════════════════════════════════════════════════════
 // Resize + compress image using canvas before sending to API
-function resizeImage(file, maxPx = 1200, quality = 0.85) {
+// Ensures base64 output stays well under Vercel's 4.5MB body limit
+function resizeImage(file, maxPx = 800, quality = 0.75) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onerror = reject;
@@ -63,8 +64,16 @@ function resizeImage(file, maxPx = 1200, quality = 0.85) {
         canvas.height = height;
         const ctx = canvas.getContext("2d");
         ctx.drawImage(img, 0, 0, width, height);
-        const dataUrl = canvas.toDataURL("image/jpeg", quality);
-        const b64 = dataUrl.split(",")[1];
+        // Start with requested quality, reduce if still too large
+        let dataUrl = canvas.toDataURL("image/jpeg", quality);
+        let b64 = dataUrl.split(",")[1];
+        // If base64 > 3MB (raw bytes ~2.25MB), compress further
+        let q = quality;
+        while (b64 && b64.length > 3 * 1024 * 1024 && q > 0.3) {
+          q -= 0.1;
+          dataUrl = canvas.toDataURL("image/jpeg", q);
+          b64 = dataUrl.split(",")[1];
+        }
         if (!b64) return reject(new Error("canvas toDataURL failed"));
         resolve({ b64, mt: "image/jpeg" });
       };
@@ -74,35 +83,44 @@ function resizeImage(file, maxPx = 1200, quality = 0.85) {
   });
 }
 
-// Identify book from image using Gemini vision
+async function callAI(body, onStatus) {
+  const res = await fetch("/api/ai", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body)
+  });
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error("API " + res.status + ": " + errText);
+  }
+  return await res.json();
+}
+
 async function identifyBookFromImage(base64, mediaType, onStatus) {
   const safeType = ["image/jpeg","image/png","image/gif","image/webp"].includes(mediaType)
     ? mediaType : "image/jpeg";
   onStatus("🔍 מזהה ספר...");
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-api-key": window._CLAUDE_KEY,
-      "anthropic-version": "2023-06-01",
-      "anthropic-dangerous-direct-browser-access": "true"
-    },
-    body: JSON.stringify({
-      model: "claude-haiku-4-5-20251001",
-      max_tokens: 256,
-      messages: [{
-        role: "user",
-        content: [
-          { type: "image", source: { type: "base64", media_type: safeType, data: base64 } },
-          { type: "text", text: 'Read the text on this book cover. Return ONLY valid JSON, nothing else: {"title": "...", "author": "..."}' }
-        ]
-      }]
-    })
-  });
-  if (!res.ok) throw new Error("API " + res.status + ": " + await res.text());
-  const data = await res.json();
-  const text = data.content?.[0]?.text || "";
-  const match = text.match(/\{[^{}]+\}/);
+  const data = await callAI({
+    model: "claude-haiku-4-5-20251001",
+    max_tokens: 300,
+    messages: [{
+      role: "user",
+      content: [
+        { type: "image", source: { type: "base64", media_type: safeType, data: base64 } },
+        { type: "text", text: `This is a book cover. Read ALL text visible on the cover carefully.
+The text may be in Hebrew (right-to-left), English, or another language.
+Identify the book title and the author name.
+Respond with ONLY a JSON object, no explanation, no markdown:
+{"title": "the book title here", "author": "the author name here"}
+If you cannot find the author, use an empty string for author.
+If you cannot read the title at all, use an empty string for title.` }
+      ]
+    }]
+  }, onStatus);
+  const text = data.content?.[0]?.text?.trim() || "";
+  // Try direct parse first, then regex fallback
+  try { return JSON.parse(text); } catch {}
+  const match = text.match(/\{[\s\S]*?"title"[\s\S]*?\}/);
   if (match) {
     try { return JSON.parse(match[0]); } catch {}
   }
@@ -111,25 +129,14 @@ async function identifyBookFromImage(base64, mediaType, onStatus) {
 
 async function searchBookByTitle(query, onStatus) {
   onStatus("🌐 מחפש...");
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-api-key": window._CLAUDE_KEY,
-      "anthropic-version": "2023-06-01",
-      "anthropic-dangerous-direct-browser-access": "true"
-    },
-    body: JSON.stringify({
-      model: "claude-haiku-4-5-20251001",
-      max_tokens: 256,
-      messages: [{
-        role: "user",
-        content: `What is the full title and author of the book: "${query}"? Return ONLY this JSON with no extra text: {"title": "exact full title", "author": "full author name"}`
-      }]
-    })
-  });
-  if (!res.ok) throw new Error("API " + res.status);
-  const data = await res.json();
+  const data = await callAI({
+    model: "claude-haiku-4-5-20251001",
+    max_tokens: 256,
+    messages: [{
+      role: "user",
+      content: `What is the full title and author of the book: "${query}"? Return ONLY this JSON with no extra text: {"title": "exact full title", "author": "full author name"}`
+    }]
+  }, onStatus);
   onStatus("📖 מעבד תוצאות...");
   const text = data.content?.[0]?.text || "";
   const match = text.match(/\{[^{}]*"title"[^{}]*\}/s);
