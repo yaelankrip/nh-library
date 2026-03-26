@@ -549,7 +549,7 @@ function AuthScreen({ onLogin, readers, books, loans, updateAll, showToast }) {
   const [regPinConfirm, setRegPinConfirm] = useState("");
 
   const isAdmin = window.location.pathname === "/admin";
-  React.useEffect(() => {
+  useEffect(() => {
     if (isAdmin) setMode("librarian");
   }, []);
   const LIBRARIAN_PIN = "999999";
