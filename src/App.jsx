@@ -548,6 +548,10 @@ function AuthScreen({ onLogin, readers, books, loans, updateAll, showToast }) {
   const [regPin, setRegPin] = useState("");
   const [regPinConfirm, setRegPinConfirm] = useState("");
 
+  const isAdmin = window.location.pathname === "/admin";
+  React.useEffect(() => {
+    if (isAdmin) setMode("librarian");
+  }, []);
   const LIBRARIAN_PIN = "999999";
 
   const loginLibrarian = () => {
@@ -594,11 +598,6 @@ function AuthScreen({ onLogin, readers, books, loans, updateAll, showToast }) {
       <h1 className="auth-title">ברוכים הבאים<br />לספריית נס הרים</h1>
       <p className="auth-subtitle">בחר/י את סוג הכניסה</p>
       <div className="role-cards">
-        <div className="role-card" onClick={() => setMode("librarian")}>
-          <div className="icon">👩‍💼</div>
-          <h3>ספרנית</h3>
-          <p>ניהול ספרים, מנויים, השאלות</p>
-        </div>
         <div className="role-card" onClick={() => setMode("reader")}>
           <div className="icon">📖</div>
           <h3>מנוי / קורא</h3>
@@ -606,7 +605,6 @@ function AuthScreen({ onLogin, readers, books, loans, updateAll, showToast }) {
         </div>
       </div>
       <div className="ornament">· · ·</div>
-      <p style={{ color:"#aaa", fontSize:"0.8rem" }}>קוד ספרנית: 999999 | מנוי לדוגמה: 052-1234567 / 1234</p>
     </div>
   );
 
