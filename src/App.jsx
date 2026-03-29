@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-app.js";
-import { getFirestore, doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js";
+import { getFirestore, doc, getDoc, setDoc, deleteDoc, collection, getDocs } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js";
 
 // ═══════════════════════════════════════════════════════
 //  FIREBASE SETUP
@@ -19,8 +19,23 @@ const db = getFirestore(app);
 // ═══════════════════════════════════════════════════════
 //  PERSISTENT STORAGE HELPERS
 // ═══════════════════════════════════════════════════════
-const STORAGE_KEYS = { BOOKS: "lib_books", READERS: "lib_readers", LOANS: "lib_loans" };
 
+// ספרים — כל ספר מסמך נפרד
+const loadBooks = async () => {
+  try {
+    const snap = await getDocs(collection(db, "books"));
+    if (snap.empty) return null;
+    return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  } catch { return null; }
+};
+const saveBook = async (book) => {
+  try { await setDoc(doc(db, "books", book.id), book); } catch {}
+};
+const deleteBook = async (id) => {
+  try { await deleteDoc(doc(db, "books", id)); } catch {}
+};
+
+// מנויים, השאלות, קוד ספרנית — מסמך אחד לכל אחד
 const loadData = async (key) => {
   try {
     const snap = await getDoc(doc(db, "library", key));
@@ -30,6 +45,8 @@ const loadData = async (key) => {
 const saveData = async (key, val) => {
   try { await setDoc(doc(db, "library", key), { value: val }); } catch {}
 };
+
+const STORAGE_KEYS = { READERS: "lib_readers", LOANS: "lib_loans" };
 
 // ═══════════════════════════════════════════════════════
 //  SAMPLE SEED DATA
@@ -460,13 +477,12 @@ export default function LibraryApp() {
   const [books, setBooks] = useState([]);
   const [readers, setReaders] = useState([]);
   const [loans, setLoans] = useState([]);
-  const [session, setSession] = useState(null); // { role: 'librarian'|'reader', readerId? }
+  const [session, setSession] = useState(null);
   const [page, setPage] = useState("home");
   const [toast, setToast] = useState(null);
   const [loading, setLoading] = useState(true);
   const [librarianPin, setLibrarianPinState] = useState("999999");
 
-  // load from storage
   useEffect(() => {
     (async () => {
       const b = await loadBooks();
@@ -580,6 +596,7 @@ function AuthScreen({ onLogin, readers, books, loans, updateAll, showToast, libr
   useEffect(() => {
     if (isAdmin) setMode("librarian");
   }, []);
+
   const loginLibrarian = () => {
     if (libPin === librarianPin) {
       onLogin({ role: "librarian" });
