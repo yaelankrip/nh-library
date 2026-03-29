@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-app.js";
-import { getFirestore, doc, getDoc, setDoc, deleteDoc, collection, getDocs } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js";
+import { getFirestore, doc, getDoc, setDoc, deleteDoc, collection, getDocs, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js";
 
 // ═══════════════════════════════════════════════════════
 //  FIREBASE SETUP
@@ -484,17 +484,37 @@ export default function LibraryApp() {
   const [librarianPin, setLibrarianPinState] = useState("999999");
 
   useEffect(() => {
-    (async () => {
-      const b = await loadBooks();
-      const r = await loadData(STORAGE_KEYS.READERS);
-      const l = await loadData(STORAGE_KEYS.LOANS);
-      const p = await loadData("lib_librarian_pin");
-      setBooks(b || SEED_BOOKS);
-      setReaders(r || SEED_READERS);
-      setLoans(l || SEED_LOANS);
-      if (p) setLibrarianPinState(p);
-      setLoading(false);
-    })();
+    let loadedCount = 0;
+    const total = 3; // books, readers, loans
+    const markLoaded = () => { loadedCount++; if (loadedCount >= total) setLoading(false); };
+
+    // ספרים — האזנה בזמן אמת
+    const unsubBooks = onSnapshot(collection(db, "books"), (snap) => {
+      if (snap.empty) {
+        // אם ריק — נטען נתוני ברירת מחדל פעם אחת
+        setBooks(prev => prev.length ? prev : SEED_BOOKS);
+      } else {
+        setBooks(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+      }
+      markLoaded();
+    });
+
+    // מנויים — האזנה בזמן אמת
+    const unsubReaders = onSnapshot(doc(db, "library", STORAGE_KEYS.READERS), (snap) => {
+      setReaders(snap.exists() ? snap.data().value : SEED_READERS);
+      markLoaded();
+    });
+
+    // השאלות — האזנה בזמן אמת
+    const unsubLoans = onSnapshot(doc(db, "library", STORAGE_KEYS.LOANS), (snap) => {
+      setLoans(snap.exists() ? snap.data().value : SEED_LOANS);
+      markLoaded();
+    });
+
+    // קוד ספרנית — טעינה חד פעמית (לא משתנה לעיתים קרובות)
+    loadData("lib_librarian_pin").then(p => { if (p) setLibrarianPinState(p); });
+
+    return () => { unsubBooks(); unsubReaders(); unsubLoans(); };
   }, []);
 
   const setLibrarianPin = (pin) => {
