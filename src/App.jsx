@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-app.js";
-import { getFirestore, doc, getDoc, setDoc, deleteDoc, collection, getDocs, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js";
+import { getFirestore, doc, getDoc, setDoc, deleteDoc, collection, getDocs } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js";
 
 // ═══════════════════════════════════════════════════════
 //  FIREBASE SETUP
@@ -483,34 +483,30 @@ export default function LibraryApp() {
   const [loading, setLoading] = useState(true);
   const [librarianPin, setLibrarianPinState] = useState("999999");
 
-  useEffect(() => {
-    let loadedCount = 0;
-    const total = 3;
-    const markLoaded = () => { loadedCount++; if (loadedCount >= total) setLoading(false); };
-
-    // ספרים — האזנה בזמן אמת, ללא כתיבת seed data
-    const unsubBooks = onSnapshot(collection(db, "books"), (snap) => {
-      setBooks(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-      markLoaded();
-    });
-
-    // מנויים — האזנה בזמן אמת, ללא כתיבת seed data
-    const unsubReaders = onSnapshot(doc(db, "library", STORAGE_KEYS.READERS), (snap) => {
-      if (snap.exists()) setReaders(snap.data().value);
-      markLoaded();
-    });
-
-    // השאלות — האזנה בזמן אמת, ללא כתיבת seed data
-    const unsubLoans = onSnapshot(doc(db, "library", STORAGE_KEYS.LOANS), (snap) => {
-      if (snap.exists()) setLoans(snap.data().value);
-      markLoaded();
-    });
-
-    // קוד ספרנית
-    loadData("lib_librarian_pin").then(p => { if (p) setLibrarianPinState(p); });
-
-    return () => { unsubBooks(); unsubReaders(); unsubLoans(); };
+  const fetchAll = useCallback(async () => {
+    const [b, r, l] = await Promise.all([
+      loadBooks(),
+      loadData(STORAGE_KEYS.READERS),
+      loadData(STORAGE_KEYS.LOANS),
+    ]);
+    if (b) setBooks(b);
+    if (r) setReaders(r);
+    if (l) setLoans(l);
   }, []);
+
+  useEffect(() => {
+    const init = async () => {
+      await fetchAll();
+      const p = await loadData("lib_librarian_pin");
+      if (p) setLibrarianPinState(p);
+      setLoading(false);
+    };
+    init();
+
+    // רענון אוטומטי כל 30 שניות
+    const interval = setInterval(fetchAll, 30000);
+    return () => clearInterval(interval);
+  }, [fetchAll]);
 
   const setLibrarianPin = (pin) => {
     setLibrarianPinState(pin);
