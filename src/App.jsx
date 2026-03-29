@@ -1,4 +1,20 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-app.js";
+import { getFirestore, doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js";
+
+// ═══════════════════════════════════════════════════════
+//  FIREBASE SETUP
+// ═══════════════════════════════════════════════════════
+const firebaseConfig = {
+  apiKey: "AIzaSyCnn25MzJ0rAs_U3NjGFT8msgbVLC7meLI",
+  authDomain: "nh-library-2026.firebaseapp.com",
+  projectId: "nh-library-2026",
+  storageBucket: "nh-library-2026.firebasestorage.app",
+  messagingSenderId: "915194285079",
+  appId: "1:915194285079:web:4b6fa82f8140eff1352052"
+};
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
 
 // ═══════════════════════════════════════════════════════
 //  PERSISTENT STORAGE HELPERS
@@ -7,12 +23,12 @@ const STORAGE_KEYS = { BOOKS: "lib_books", READERS: "lib_readers", LOANS: "lib_l
 
 const loadData = async (key) => {
   try {
-    const val = localStorage.getItem(key);
-    return val ? JSON.parse(val) : null;
+    const snap = await getDoc(doc(db, "library", key));
+    return snap.exists() ? snap.data().value : null;
   } catch { return null; }
 };
 const saveData = async (key, val) => {
-  try { localStorage.setItem(key, JSON.stringify(val)); } catch {}
+  try { await setDoc(doc(db, "library", key), { value: val }); } catch {}
 };
 
 // ═══════════════════════════════════════════════════════
