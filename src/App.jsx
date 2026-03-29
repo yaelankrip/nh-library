@@ -485,33 +485,28 @@ export default function LibraryApp() {
 
   useEffect(() => {
     let loadedCount = 0;
-    const total = 3; // books, readers, loans
+    const total = 3;
     const markLoaded = () => { loadedCount++; if (loadedCount >= total) setLoading(false); };
 
-    // ספרים — האזנה בזמן אמת
+    // ספרים — האזנה בזמן אמת, ללא כתיבת seed data
     const unsubBooks = onSnapshot(collection(db, "books"), (snap) => {
-      if (snap.empty) {
-        // אם ריק — נטען נתוני ברירת מחדל פעם אחת
-        setBooks(prev => prev.length ? prev : SEED_BOOKS);
-      } else {
-        setBooks(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-      }
+      setBooks(snap.docs.map(d => ({ id: d.id, ...d.data() })));
       markLoaded();
     });
 
-    // מנויים — האזנה בזמן אמת
+    // מנויים — האזנה בזמן אמת, ללא כתיבת seed data
     const unsubReaders = onSnapshot(doc(db, "library", STORAGE_KEYS.READERS), (snap) => {
-      setReaders(snap.exists() ? snap.data().value : SEED_READERS);
+      if (snap.exists()) setReaders(snap.data().value);
       markLoaded();
     });
 
-    // השאלות — האזנה בזמן אמת
+    // השאלות — האזנה בזמן אמת, ללא כתיבת seed data
     const unsubLoans = onSnapshot(doc(db, "library", STORAGE_KEYS.LOANS), (snap) => {
-      setLoans(snap.exists() ? snap.data().value : SEED_LOANS);
+      if (snap.exists()) setLoans(snap.data().value);
       markLoaded();
     });
 
-    // קוד ספרנית — טעינה חד פעמית (לא משתנה לעיתים קרובות)
+    // קוד ספרנית
     loadData("lib_librarian_pin").then(p => { if (p) setLibrarianPinState(p); });
 
     return () => { unsubBooks(); unsubReaders(); unsubLoans(); };
