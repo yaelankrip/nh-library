@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-app.js";
-import { getFirestore, doc, getDoc, setDoc, deleteDoc, collection, getDocs } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js";
+import { getFirestore, doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js";
 
 // ═══════════════════════════════════════════════════════
 //  FIREBASE SETUP
@@ -19,23 +19,8 @@ const db = getFirestore(app);
 // ═══════════════════════════════════════════════════════
 //  PERSISTENT STORAGE HELPERS
 // ═══════════════════════════════════════════════════════
+const STORAGE_KEYS = { BOOKS: "lib_books", READERS: "lib_readers", LOANS: "lib_loans" };
 
-// ספרים — כל ספר מסמך נפרד ב-books/
-const loadBooks = async () => {
-  try {
-    const snap = await getDocs(collection(db, "books"));
-    if (snap.empty) return null;
-    return snap.docs.map(d => ({ id: d.id, ...d.data() }));
-  } catch { return null; }
-};
-const saveBook = async (book) => {
-  try { await setDoc(doc(db, "books", book.id), book); } catch {}
-};
-const deleteBook = async (id) => {
-  try { await deleteDoc(doc(db, "books", id)); } catch {}
-};
-
-// מנויים והשאלות — מסמך אחד לכל אחד
 const loadData = async (key) => {
   try {
     const snap = await getDoc(doc(db, "library", key));
@@ -45,8 +30,6 @@ const loadData = async (key) => {
 const saveData = async (key, val) => {
   try { await setDoc(doc(db, "library", key), { value: val }); } catch {}
 };
-
-const STORAGE_KEYS = { READERS: "lib_readers", LOANS: "lib_loans" };
 
 // ═══════════════════════════════════════════════════════
 //  SAMPLE SEED DATA
@@ -481,6 +464,7 @@ export default function LibraryApp() {
   const [page, setPage] = useState("home");
   const [toast, setToast] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [librarianPin, setLibrarianPinState] = useState("999999");
 
   // load from storage
   useEffect(() => {
@@ -488,12 +472,19 @@ export default function LibraryApp() {
       const b = await loadBooks();
       const r = await loadData(STORAGE_KEYS.READERS);
       const l = await loadData(STORAGE_KEYS.LOANS);
+      const p = await loadData("lib_librarian_pin");
       setBooks(b || SEED_BOOKS);
       setReaders(r || SEED_READERS);
       setLoans(l || SEED_LOANS);
+      if (p) setLibrarianPinState(p);
       setLoading(false);
     })();
   }, []);
+
+  const setLibrarianPin = (pin) => {
+    setLibrarianPinState(pin);
+    saveData("lib_librarian_pin", pin);
+  };
 
   const showToast = useCallback((msg) => {
     setToast(msg);
@@ -501,12 +492,10 @@ export default function LibraryApp() {
   }, []);
 
   const persist = useCallback(async (b, r, l, prevBooks) => {
-    // ספרים — שמור כל ספר בנפרד, מחק ספרים שנמחקו
     const newIds = new Set(b.map(book => book.id));
     const oldIds = new Set((prevBooks || []).map(book => book.id));
     await Promise.all(b.map(book => saveBook(book)));
     await Promise.all([...oldIds].filter(id => !newIds.has(id)).map(id => deleteBook(id)));
-    // מנויים והשאלות — מסמך אחד
     await Promise.all([
       saveData(STORAGE_KEYS.READERS, r),
       saveData(STORAGE_KEYS.LOANS, l),
@@ -533,13 +522,13 @@ export default function LibraryApp() {
       <style>{FONTS}</style>
       <Header session={session} onLogout={logout} />
       {!session && (
-        <AuthScreen onLogin={setSession} readers={readers} books={books} loans={loans} updateAll={updateAll} showToast={showToast} />
+        <AuthScreen onLogin={setSession} readers={readers} books={books} loans={loans} updateAll={updateAll} showToast={showToast} librarianPin={librarianPin} />
       )}
       {session?.role === "librarian" && (
         <LibrarianDashboard
           books={books} readers={readers} loans={loans}
           updateAll={updateAll} page={page} setPage={setPage}
-          showToast={showToast}
+          showToast={showToast} librarianPin={librarianPin} setLibrarianPin={setLibrarianPin}
         />
       )}
       {session?.role === "reader" && (
@@ -572,7 +561,7 @@ function Header({ session, onLogout }) {
 }
 
 // ── AUTH SCREEN ──
-function AuthScreen({ onLogin, readers, books, loans, updateAll, showToast }) {
+function AuthScreen({ onLogin, readers, books, loans, updateAll, showToast, librarianPin }) {
   const [mode, setMode] = useState(null); // null | 'librarian' | 'reader'
   const [readerSubMode, setReaderSubMode] = useState(null); // null | 'login' | 'register'
   const [libPin, setLibPin] = useState("");
@@ -591,10 +580,8 @@ function AuthScreen({ onLogin, readers, books, loans, updateAll, showToast }) {
   useEffect(() => {
     if (isAdmin) setMode("librarian");
   }, []);
-  const LIBRARIAN_PIN = "999999";
-
   const loginLibrarian = () => {
-    if (libPin === LIBRARIAN_PIN) {
+    if (libPin === librarianPin) {
       onLogin({ role: "librarian" });
     } else {
       setErr("קוד שגוי. נסי שנית.");
@@ -737,13 +724,14 @@ function AuthScreen({ onLogin, readers, books, loans, updateAll, showToast }) {
 // ═══════════════════════════════════════════════════════
 //  LIBRARIAN DASHBOARD
 // ═══════════════════════════════════════════════════════
-function LibrarianDashboard({ books, readers, loans, updateAll, page, setPage, showToast }) {
+function LibrarianDashboard({ books, readers, loans, updateAll, page, setPage, showToast, librarianPin, setLibrarianPin }) {
   const pages = [
     { id: "overview", icon: "📊", label: "סקירה" },
     { id: "books", icon: "📚", label: "ספרים" },
     { id: "loans", icon: "📋", label: "השאלות" },
     { id: "readers", icon: "👥", label: "מנויים" },
     { id: "search_book", icon: "🔍", label: "חיפוש ספר" },
+    { id: "settings", icon: "⚙️", label: "הגדרות" },
   ];
 
   useEffect(() => { if (page === "home") setPage("overview"); }, []);
@@ -764,6 +752,7 @@ function LibrarianDashboard({ books, readers, loans, updateAll, page, setPage, s
         {page === "loans" && <LoansManager books={books} readers={readers} loans={loans} updateAll={(l) => updateAll(books, readers, l)} showToast={showToast} />}
         {page === "readers" && <ReadersManager readers={readers} updateAll={r => updateAll(books, r, loans)} showToast={showToast} />}
         {page === "search_book" && <BookSearch books={books} loans={loans} readers={readers} />}
+        {page === "settings" && <LibrarianSettings librarianPin={librarianPin} setLibrarianPin={setLibrarianPin} showToast={showToast} />}
       </main>
     </div>
   );
@@ -1255,6 +1244,8 @@ function ReadersManager({ readers, updateAll, showToast }) {
   const [showAdd, setShowAdd] = useState(false);
   const [search, setSearch] = useState("");
   const [form, setForm] = useState({ firstName:"", lastName:"", phone:"", pin:"" });
+  const [editPinId, setEditPinId] = useState(null);
+  const [newPin, setNewPin] = useState("");
   const set = (k,v) => setForm(f => ({...f,[k]:v}));
 
   const filtered = readers.filter(r => {
@@ -1276,6 +1267,16 @@ function ReadersManager({ readers, updateAll, showToast }) {
     showToast("✓ מנוי הוסר");
   };
 
+  const savePin = (id) => {
+    if (!newPin || newPin.length !== 4 || !/^\d{4}$/.test(newPin)) {
+      showToast("❌ קוד חייב להיות 4 ספרות"); return;
+    }
+    updateAll(readers.map(r => r.id === id ? { ...r, pin: newPin } : r));
+    setEditPinId(null);
+    setNewPin("");
+    showToast("✓ קוד עודכן בהצלחה");
+  };
+
   return (
     <div>
       <div className="section-header">
@@ -1288,13 +1289,27 @@ function ReadersManager({ readers, updateAll, showToast }) {
       </div>
       <div style={{ overflowX:"auto" }}>
         <table className="data-table">
-          <thead><tr><th>שם פרטי</th><th>שם משפחה</th><th>טלפון</th><th>קוד</th><th>פעולה</th></tr></thead>
+          <thead><tr><th>שם פרטי</th><th>שם משפחה</th><th>טלפון</th><th>קוד</th><th>פעולות</th></tr></thead>
           <tbody>
             {filtered.map(r => (
               <tr key={r.id}>
                 <td>{r.firstName}</td><td>{r.lastName}</td><td>{r.phone}</td>
-                <td style={{ letterSpacing:"2px", fontFamily:"monospace" }}>{r.pin}</td>
-                <td><button className="btn btn-sm btn-danger" onClick={() => remove(r.id)}>הסר</button></td>
+                <td>
+                  {editPinId === r.id ? (
+                    <div style={{ display:"flex", gap:"0.4rem", alignItems:"center" }}>
+                      <input type="password" value={newPin} onChange={e => setNewPin(e.target.value)}
+                        maxLength={4} placeholder="קוד חדש" style={{ width:"80px", padding:"0.2rem 0.4rem", border:"1px solid #ccc", borderRadius:"3px" }} />
+                      <button className="btn btn-sm btn-primary" onClick={() => savePin(r.id)}>שמור</button>
+                      <button className="btn btn-sm btn-secondary" onClick={() => { setEditPinId(null); setNewPin(""); }}>ביטול</button>
+                    </div>
+                  ) : (
+                    <span style={{ letterSpacing:"2px", fontFamily:"monospace" }}>{"•".repeat(r.pin?.length || 4)}</span>
+                  )}
+                </td>
+                <td style={{ display:"flex", gap:"0.4rem" }}>
+                  <button className="btn btn-sm btn-secondary" onClick={() => { setEditPinId(r.id); setNewPin(""); }}>✏️ קוד</button>
+                  <button className="btn btn-sm btn-danger" onClick={() => remove(r.id)}>הסר</button>
+                </td>
               </tr>
             ))}
             {filtered.length === 0 && <tr><td colSpan={5} style={{ textAlign:"center", color:"#aaa", padding:"1rem" }}>לא נמצאו מנויים</td></tr>}
@@ -1326,6 +1341,49 @@ function ReadersManager({ readers, updateAll, showToast }) {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// ── LIBRARIAN SETTINGS ──
+function LibrarianSettings({ librarianPin, setLibrarianPin, showToast }) {
+  const [oldPin, setOldPin] = useState("");
+  const [newPin, setNewPin] = useState("");
+  const [confirmPin, setConfirmPin] = useState("");
+  const [err, setErr] = useState("");
+
+  const save = () => {
+    setErr("");
+    if (oldPin !== librarianPin) { setErr("הקוד הנוכחי שגוי"); return; }
+    if (newPin.length < 4 || !/^\d+$/.test(newPin)) { setErr("קוד חדש חייב להיות ספרות בלבד (לפחות 4)"); return; }
+    if (newPin !== confirmPin) { setErr("הקודים החדשים אינם תואמים"); return; }
+    setLibrarianPin(newPin);
+    setOldPin(""); setNewPin(""); setConfirmPin("");
+    showToast("✓ קוד הספרנית עודכן בהצלחה");
+  };
+
+  return (
+    <div>
+      <div className="section-header">
+        <h2 className="section-title">הגדרות</h2>
+      </div>
+      <div style={{ maxWidth:"400px", background:"white", border:"1.5px solid #ddd", borderRadius:"4px", padding:"1.5rem", boxShadow:"2px 2px 0 var(--shadow)" }}>
+        <h3 style={{ fontFamily:"'Alef',Arial,sans-serif", fontWeight:700, marginBottom:"1.2rem", color:"var(--ink)" }}>🔐 שינוי קוד הספרנית</h3>
+        <div className="form-group">
+          <label>קוד נוכחי</label>
+          <input type="password" value={oldPin} onChange={e => setOldPin(e.target.value)} placeholder="הזיני קוד נוכחי" />
+        </div>
+        <div className="form-group">
+          <label>קוד חדש</label>
+          <input type="password" value={newPin} onChange={e => setNewPin(e.target.value)} placeholder="קוד חדש (ספרות בלבד)" />
+        </div>
+        <div className="form-group">
+          <label>אימות קוד חדש</label>
+          <input type="password" value={confirmPin} onChange={e => setConfirmPin(e.target.value)} placeholder="הזיני שוב את הקוד החדש" />
+        </div>
+        {err && <p style={{ color:"var(--rust)", marginBottom:"0.8rem", fontSize:"0.9rem" }}>{err}</p>}
+        <button className="btn btn-primary" onClick={save}>שמור קוד חדש</button>
+      </div>
     </div>
   );
 }
