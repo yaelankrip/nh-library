@@ -1228,8 +1228,17 @@ function AddLoanModal({ books, readers, loans, onAdd, onClose }) {
   const today = new Date().toISOString().split("T")[0];
   const twoWeeks = new Date(Date.now() + 14 * 86400000).toISOString().split("T")[0];
   const [form, setForm] = useState({ bookId:"", readerId:"", loanDate: today, returnDate: twoWeeks });
+  const [bookSearch, setBookSearch] = useState("");
 
   const set = (k,v) => setForm(f => ({...f,[k]:v}));
+
+  const filteredBooks = available.filter(b =>
+    !bookSearch.trim() ||
+    b.title.includes(bookSearch.trim()) ||
+    b.author.includes(bookSearch.trim())
+  );
+
+  const selectedBook = books.find(b => b.id === form.bookId);
 
   const submit = () => {
     if (!form.bookId || !form.readerId || !form.returnDate) return;
@@ -1242,10 +1251,29 @@ function AddLoanModal({ books, readers, loans, onAdd, onClose }) {
         <h3 className="modal-title">השאלת ספר חדשה</h3>
         <div className="form-group">
           <label>ספר</label>
-          <select value={form.bookId} onChange={e => set("bookId",e.target.value)}>
-            <option value="">בחר ספר...</option>
-            {available.map(b => <option key={b.id} value={b.id}>{b.title} — {b.author}</option>)}
-          </select>
+          {selectedBook ? (
+            <div style={{ display:"flex", gap:"0.5rem", alignItems:"center" }}>
+              <span style={{ flex:1, padding:"0.4rem 0.6rem", border:"1px solid #ccc", borderRadius:"3px", background:"#f9f6f1" }}>
+                {selectedBook.title} — {selectedBook.author}
+              </span>
+              <button className="btn btn-sm btn-secondary" onClick={() => { set("bookId",""); setBookSearch(""); }}>שנה</button>
+            </div>
+          ) : (
+            <>
+              <input
+                value={bookSearch}
+                onChange={e => setBookSearch(e.target.value)}
+                placeholder="חפש/י שם ספר או סופר..."
+                style={{ marginBottom:"0.4rem" }}
+                autoFocus
+              />
+              <select size={5} value={form.bookId} onChange={e => { set("bookId", e.target.value); setBookSearch(""); }}
+                style={{ width:"100%", borderRadius:"3px", border:"1px solid #ccc" }}>
+                <option value="">בחר ספר...</option>
+                {filteredBooks.map(b => <option key={b.id} value={b.id}>{b.title} — {b.author}</option>)}
+              </select>
+            </>
+          )}
         </div>
         <div className="form-group">
           <label>מנוי</label>
