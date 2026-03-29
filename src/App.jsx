@@ -1320,7 +1320,7 @@ function ReadersManager({ readers, updateAll, showToast }) {
                       <button className="btn btn-sm btn-secondary" onClick={() => { setEditPinId(null); setNewPin(""); }}>ביטול</button>
                     </div>
                   ) : (
-                    <span style={{ letterSpacing:"2px", fontFamily:"monospace" }}>{"•".repeat(r.pin?.length || 4)}</span>
+                    <span style={{ letterSpacing:"2px", fontFamily:"monospace" }}>{r.pin}</span>
                   )}
                 </td>
                 <td style={{ display:"flex", gap:"0.4rem" }}>
