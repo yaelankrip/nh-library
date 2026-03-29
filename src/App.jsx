@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-app.js";
-import { getFirestore, doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js";
+import { getFirestore, doc, getDoc, setDoc, deleteDoc, collection, getDocs } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js";
 
 // ═══════════════════════════════════════════════════════
 //  FIREBASE SETUP
@@ -19,8 +19,23 @@ const db = getFirestore(app);
 // ═══════════════════════════════════════════════════════
 //  PERSISTENT STORAGE HELPERS
 // ═══════════════════════════════════════════════════════
-const STORAGE_KEYS = { BOOKS: "lib_books", READERS: "lib_readers", LOANS: "lib_loans" };
 
+// ספרים — כל ספר מסמך נפרד ב-books/
+const loadBooks = async () => {
+  try {
+    const snap = await getDocs(collection(db, "books"));
+    if (snap.empty) return null;
+    return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  } catch { return null; }
+};
+const saveBook = async (book) => {
+  try { await setDoc(doc(db, "books", book.id), book); } catch {}
+};
+const deleteBook = async (id) => {
+  try { await deleteDoc(doc(db, "books", id)); } catch {}
+};
+
+// מנויים והשאלות — מסמך אחד לכל אחד
 const loadData = async (key) => {
   try {
     const snap = await getDoc(doc(db, "library", key));
@@ -30,6 +45,8 @@ const loadData = async (key) => {
 const saveData = async (key, val) => {
   try { await setDoc(doc(db, "library", key), { value: val }); } catch {}
 };
+
+const STORAGE_KEYS = { READERS: "lib_readers", LOANS: "lib_loans" };
 
 // ═══════════════════════════════════════════════════════
 //  SAMPLE SEED DATA
@@ -468,7 +485,7 @@ export default function LibraryApp() {
   // load from storage
   useEffect(() => {
     (async () => {
-      const b = await loadData(STORAGE_KEYS.BOOKS);
+      const b = await loadBooks();
       const r = await loadData(STORAGE_KEYS.READERS);
       const l = await loadData(STORAGE_KEYS.LOANS);
       setBooks(b || SEED_BOOKS);
@@ -483,17 +500,23 @@ export default function LibraryApp() {
     setTimeout(() => setToast(null), 3000);
   }, []);
 
-  const persist = useCallback(async (b, r, l) => {
+  const persist = useCallback(async (b, r, l, prevBooks) => {
+    // ספרים — שמור כל ספר בנפרד, מחק ספרים שנמחקו
+    const newIds = new Set(b.map(book => book.id));
+    const oldIds = new Set((prevBooks || []).map(book => book.id));
+    await Promise.all(b.map(book => saveBook(book)));
+    await Promise.all([...oldIds].filter(id => !newIds.has(id)).map(id => deleteBook(id)));
+    // מנויים והשאלות — מסמך אחד
     await Promise.all([
-      saveData(STORAGE_KEYS.BOOKS, b),
       saveData(STORAGE_KEYS.READERS, r),
       saveData(STORAGE_KEYS.LOANS, l),
     ]);
   }, []);
 
   const updateAll = (b, r, l) => {
+    const prevBooks = books;
     setBooks(b); setReaders(r); setLoans(l);
-    persist(b, r, l);
+    persist(b, r, l, prevBooks);
   };
 
   const logout = () => { setSession(null); setPage("home"); };
