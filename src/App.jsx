@@ -483,18 +483,18 @@ export default function LibraryApp() {
   const [loading, setLoading] = useState(true);
   const [librarianPin, setLibrarianPinState] = useState("999999");
 
-  const fetchAll = useCallback(async () => {
-    const [b, r, l] = await Promise.all([
-      loadBooks(),
-      loadData(STORAGE_KEYS.READERS),
-      loadData(STORAGE_KEYS.LOANS),
-    ]);
-    if (b) setBooks(b);
-    if (r) setReaders(r);
-    if (l) setLoans(l);
-  }, []);
-
   useEffect(() => {
+    const fetchAll = async () => {
+      const [b, r, l] = await Promise.all([
+        loadBooks(),
+        loadData(STORAGE_KEYS.READERS),
+        loadData(STORAGE_KEYS.LOANS),
+      ]);
+      if (b) setBooks(b);
+      if (r) setReaders(r);
+      if (l) setLoans(l);
+    };
+
     const init = async () => {
       await fetchAll();
       const p = await loadData("lib_librarian_pin");
@@ -503,10 +503,10 @@ export default function LibraryApp() {
     };
     init();
 
-    // רענון אוטומטי כל 30 שניות
-    const interval = setInterval(fetchAll, 30000);
+    // רענון אוטומטי כל 60 שניות
+    const interval = setInterval(fetchAll, 60000);
     return () => clearInterval(interval);
-  }, [fetchAll]);
+  }, []);
 
   const setLibrarianPin = (pin) => {
     setLibrarianPinState(pin);
