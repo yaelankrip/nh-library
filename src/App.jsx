@@ -482,14 +482,17 @@ export default function LibraryApp() {
   const [toast, setToast] = useState(null);
   const [loading, setLoading] = useState(true);
   const [librarianPin, setLibrarianPinState] = useState("999999");
+  const savingRef = useRef(false);
 
   useEffect(() => {
     const fetchAll = async () => {
+      if (savingRef.current) return;
       const [b, r, l] = await Promise.all([
         loadBooks(),
         loadData(STORAGE_KEYS.READERS),
         loadData(STORAGE_KEYS.LOANS),
       ]);
+      if (savingRef.current) return;
       if (b) setBooks(b);
       if (r) setReaders(r);
       if (l) setLoans(l);
@@ -519,14 +522,19 @@ export default function LibraryApp() {
   }, []);
 
   const persist = useCallback(async (b, r, l, prevBooks) => {
-    const newIds = new Set(b.map(book => book.id));
-    const oldIds = new Set((prevBooks || []).map(book => book.id));
-    await Promise.all(b.map(book => saveBook(book)));
-    await Promise.all([...oldIds].filter(id => !newIds.has(id)).map(id => deleteBook(id)));
-    await Promise.all([
-      saveData(STORAGE_KEYS.READERS, r),
-      saveData(STORAGE_KEYS.LOANS, l),
-    ]);
+    savingRef.current = true;
+    try {
+      const newIds = new Set(b.map(book => book.id));
+      const oldIds = new Set((prevBooks || []).map(book => book.id));
+      await Promise.all(b.map(book => saveBook(book)));
+      await Promise.all([...oldIds].filter(id => !newIds.has(id)).map(id => deleteBook(id)));
+      await Promise.all([
+        saveData(STORAGE_KEYS.READERS, r),
+        saveData(STORAGE_KEYS.LOANS, l),
+      ]);
+    } finally {
+      savingRef.current = false;
+    }
   }, []);
 
   const updateAll = (b, r, l) => {
