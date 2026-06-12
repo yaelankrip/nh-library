@@ -787,7 +787,7 @@ function LibrarianDashboard({ books, readers, loans, updateAll, page, setPage, s
       <main className="main-content">
         {page === "overview" && <Overview books={books} readers={readers} loans={loans} />}
         {page === "books" && <BooksManager books={books} loans={loans} updateAll={b => updateAll(b, readers, loans)} showToast={showToast} />}
-        {page === "loans" && <LoansManager books={books} readers={readers} loans={loans} updateAll={(l) => updateAll(books, readers, l)} showToast={showToast} />}
+        {page === "loans" && <LoansManager books={books} readers={readers} loans={loans} updateAll={(l) => updateAll(books, readers, l)} updateBooks={(b) => updateAll(b, readers, loans)} updateReaders={(r) => updateAll(books, r, loans)} showToast={showToast} />}
         {page === "readers" && <ReadersManager readers={readers} updateAll={r => updateAll(books, r, loans)} showToast={showToast} />}
         {page === "search_book" && <BookSearch books={books} loans={loans} readers={readers} />}
         {page === "settings" && <LibrarianSettings librarianPin={librarianPin} setLibrarianPin={setLibrarianPin} showToast={showToast} />}
@@ -1139,7 +1139,7 @@ function EditBookModal({ book, onSave, onClose }) {
 }
 
 // ── LOANS MANAGER ──
-function LoansManager({ books, readers, loans, updateAll, showToast }) {
+function LoansManager({ books, readers, loans, updateAll, updateBooks, updateReaders, showToast }) {
   const [showAdd, setShowAdd] = useState(false);
   const [search, setSearch] = useState("");
   const today = new Date().toISOString().split("T")[0];
@@ -1170,6 +1170,20 @@ function LoansManager({ books, readers, loans, updateAll, showToast }) {
     updateAll([...loans, { ...loan, id: "l" + Date.now(), returned: false }]);
     setShowAdd(false);
     showToast("✓ השאלה נרשמה");
+  };
+
+  const addBook = (book) => {
+    const newBook = { ...book, id: "b" + Date.now(), addedAt: new Date().toISOString().split("T")[0] };
+    updateBooks([...books, newBook]);
+    showToast("✓ הספר נוסף בהצלחה");
+    return newBook;
+  };
+
+  const addReader = (reader) => {
+    const newReader = { ...reader, id: "r" + Date.now() };
+    updateReaders([...readers, newReader]);
+    showToast("✓ מנוי נוסף בהצלחה");
+    return newReader;
   };
 
   const getBook = id => books.find(b => b.id === id);
@@ -1222,12 +1236,12 @@ function LoansManager({ books, readers, loans, updateAll, showToast }) {
       {renderTable(active)}
       <h3 style={{ fontFamily:"'Alef',Arial,sans-serif", fontWeight:700, fontSize:"1rem", color:"var(--stamp)", margin:"1.5rem 0 0.7rem" }}>📁 היסטוריה ({returned.length})</h3>
       {renderTable(returned)}
-      {showAdd && <AddLoanModal books={books} readers={readers} loans={loans} onAdd={addLoan} onClose={() => setShowAdd(false)} />}
+      {showAdd && <AddLoanModal books={books} readers={readers} loans={loans} onAdd={addLoan} onAddBook={addBook} onAddReader={addReader} onClose={() => setShowAdd(false)} />}
     </div>
   );
 }
 
-function AddLoanModal({ books, readers, loans, onAdd, onClose }) {
+function AddLoanModal({ books, readers, loans, onAdd, onAddBook, onAddReader, onClose }) {
   const activeLoans = loans.filter(l => !l.returned);
   const loanedIds = new Set(activeLoans.map(l => l.bookId));
   const available = books.filter(b => !loanedIds.has(b.id));
@@ -1235,6 +1249,14 @@ function AddLoanModal({ books, readers, loans, onAdd, onClose }) {
   const twoWeeks = new Date(Date.now() + 14 * 86400000).toISOString().split("T")[0];
   const [form, setForm] = useState({ bookId:"", readerId:"", loanDate: today, returnDate: twoWeeks });
   const [bookSearch, setBookSearch] = useState("");
+
+  const [showNewBook, setShowNewBook] = useState(false);
+  const [newBookTitle, setNewBookTitle] = useState("");
+  const [newBookAuthor, setNewBookAuthor] = useState("");
+
+  const [showNewReader, setShowNewReader] = useState(false);
+  const [newReader, setNewReader] = useState({ firstName:"", lastName:"", phone:"", pin:"" });
+  const [newReaderErr, setNewReaderErr] = useState("");
 
   const set = (k,v) => setForm(f => ({...f,[k]:v}));
 
@@ -1249,6 +1271,34 @@ function AddLoanModal({ books, readers, loans, onAdd, onClose }) {
   const submit = () => {
     if (!form.bookId || !form.readerId || !form.returnDate) return;
     onAdd(form);
+  };
+
+  const submitNewBook = () => {
+    if (!newBookTitle.trim() || !newBookAuthor.trim()) return;
+    const created = onAddBook({ title: newBookTitle.trim(), author: newBookAuthor.trim(), cover: null });
+    set("bookId", created.id);
+    setBookSearch("");
+    setShowNewBook(false);
+    setNewBookTitle(""); setNewBookAuthor("");
+  };
+
+  const submitNewReader = () => {
+    if (!newReader.firstName.trim() || !newReader.phone.trim() || !newReader.pin.trim()) {
+      setNewReaderErr("יש למלא שם פרטי, טלפון וקוד אישי"); return;
+    }
+    if (!/^\d{4}$/.test(newReader.pin)) {
+      setNewReaderErr("קוד אישי חייב להיות 4 ספרות"); return;
+    }
+    const created = onAddReader({
+      firstName: newReader.firstName.trim(),
+      lastName: newReader.lastName.trim(),
+      phone: newReader.phone.trim(),
+      pin: newReader.pin.trim(),
+    });
+    set("readerId", created.id);
+    setShowNewReader(false);
+    setNewReader({ firstName:"", lastName:"", phone:"", pin:"" });
+    setNewReaderErr("");
   };
 
   return (
@@ -1278,6 +1328,26 @@ function AddLoanModal({ books, readers, loans, onAdd, onClose }) {
                 <option value="">בחר ספר...</option>
                 {filteredBooks.map(b => <option key={b.id} value={b.id}>{b.title} — {b.author}</option>)}
               </select>
+              {!showNewBook ? (
+                <button type="button" className="btn-link" style={{ fontSize:"0.85rem", marginTop:"0.4rem" }} onClick={() => setShowNewBook(true)}>
+                  ➕ הספר לא נמצא? הוסף ספר חדש
+                </button>
+              ) : (
+                <div style={{ marginTop:"0.6rem", padding:"0.6rem", border:"1px dashed #ccc", borderRadius:"3px", background:"#f9f6f1" }}>
+                  <div className="form-group">
+                    <label>שם הספר</label>
+                    <input value={newBookTitle} onChange={e => setNewBookTitle(e.target.value)} placeholder="שם הספר" />
+                  </div>
+                  <div className="form-group">
+                    <label>סופר/ת</label>
+                    <input value={newBookAuthor} onChange={e => setNewBookAuthor(e.target.value)} placeholder="שם הסופר/ת" />
+                  </div>
+                  <div style={{ display:"flex", gap:"0.5rem" }}>
+                    <button type="button" className="btn btn-sm btn-primary" onClick={submitNewBook} disabled={!newBookTitle.trim() || !newBookAuthor.trim()}>הוסף ובחר</button>
+                    <button type="button" className="btn btn-sm btn-secondary" onClick={() => { setShowNewBook(false); setNewBookTitle(""); setNewBookAuthor(""); }}>ביטול</button>
+                  </div>
+                </div>
+              )}
             </>
           )}
         </div>
@@ -1287,6 +1357,35 @@ function AddLoanModal({ books, readers, loans, onAdd, onClose }) {
             <option value="">בחר מנוי...</option>
             {readers.map(r => <option key={r.id} value={r.id}>{r.firstName} {r.lastName}</option>)}
           </select>
+          {!showNewReader ? (
+            <button type="button" className="btn-link" style={{ fontSize:"0.85rem", marginTop:"0.4rem" }} onClick={() => setShowNewReader(true)}>
+              ➕ המנוי לא נמצא? הוסף מנוי חדש
+            </button>
+          ) : (
+            <div style={{ marginTop:"0.6rem", padding:"0.6rem", border:"1px dashed #ccc", borderRadius:"3px", background:"#f9f6f1" }}>
+              <div className="form-group">
+                <label>שם פרטי</label>
+                <input value={newReader.firstName} onChange={e => setNewReader(f => ({...f, firstName:e.target.value}))} placeholder="שם פרטי" />
+              </div>
+              <div className="form-group">
+                <label>שם משפחה</label>
+                <input value={newReader.lastName} onChange={e => setNewReader(f => ({...f, lastName:e.target.value}))} placeholder="שם משפחה" />
+              </div>
+              <div className="form-group">
+                <label>טלפון</label>
+                <input value={newReader.phone} onChange={e => setNewReader(f => ({...f, phone:formatPhone(e.target.value)}))} placeholder="052-1234567" />
+              </div>
+              <div className="form-group">
+                <label>קוד אישי (4 ספרות)</label>
+                <input type="password" value={newReader.pin} onChange={e => setNewReader(f => ({...f, pin:e.target.value}))} maxLength={4} placeholder="••••" />
+              </div>
+              {newReaderErr && <div style={{ color:"var(--rust)", fontSize:"0.85rem", marginBottom:"0.4rem" }}>{newReaderErr}</div>}
+              <div style={{ display:"flex", gap:"0.5rem" }}>
+                <button type="button" className="btn btn-sm btn-primary" onClick={submitNewReader}>הוסף ובחר</button>
+                <button type="button" className="btn btn-sm btn-secondary" onClick={() => { setShowNewReader(false); setNewReader({ firstName:"", lastName:"", phone:"", pin:"" }); setNewReaderErr(""); }}>ביטול</button>
+              </div>
+            </div>
+          )}
         </div>
         <div className="form-group">
           <label>תאריך השאלה</label>
