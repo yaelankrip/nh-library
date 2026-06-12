@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { initializeApp } from "firebase/app";
-import { getFirestore, doc, getDoc, setDoc, deleteDoc, collection, getDocs } from "firebase/firestore";
+import { initializeFirestore, persistentLocalCache, doc, getDoc, setDoc, deleteDoc, collection, getDocs } from "firebase/firestore";
 
 // ═══════════════════════════════════════════════════════
 //  FIREBASE SETUP
@@ -14,7 +14,9 @@ const firebaseConfig = {
   appId: "1:915194285079:web:4b6fa82f8140eff1352052"
 };
 const app = initializeApp(firebaseConfig);
-const db = getFirestore(app);
+// שמירת מטמון מקומי קבוע: שינויים נשמרים מיידית במכשיר (IndexedDB)
+// ולא הולכים לאיבוד אם הדפדפן נסגר/נטען מחדש לפני שהשמירה הספיקה להגיע לשרת
+const db = initializeFirestore(app, { localCache: persistentLocalCache() });
 
 // ═══════════════════════════════════════════════════════
 //  PERSISTENT STORAGE HELPERS
