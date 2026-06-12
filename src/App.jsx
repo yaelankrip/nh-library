@@ -785,7 +785,7 @@ function LibrarianDashboard({ books, readers, loans, updateAll, page, setPage, s
         <div className="sidebar-divider" />
       </nav>
       <main className="main-content">
-        {page === "overview" && <Overview books={books} readers={readers} loans={loans} />}
+        {page === "overview" && <Overview books={books} readers={readers} loans={loans} updateAll={updateAll} showToast={showToast} />}
         {page === "books" && <BooksManager books={books} loans={loans} updateAll={b => updateAll(b, readers, loans)} showToast={showToast} />}
         {page === "loans" && <LoansManager books={books} readers={readers} loans={loans} updateAll={(l) => updateAll(books, readers, l)} updateBooks={(b) => updateAll(b, readers, loans)} updateReaders={(r) => updateAll(books, r, loans)} showToast={showToast} />}
         {page === "readers" && <ReadersManager readers={readers} updateAll={r => updateAll(books, r, loans)} showToast={showToast} />}
@@ -797,11 +797,46 @@ function LibrarianDashboard({ books, readers, loans, updateAll, page, setPage, s
 }
 
 // ── OVERVIEW ──
-function Overview({ books, readers, loans }) {
+function Overview({ books, readers, loans, updateAll, showToast }) {
   const today = new Date().toISOString().split("T")[0];
   const activeLoans = loans.filter(l => !l.returned);
   const overdue = activeLoans.filter(l => l.returnDate < today);
   const available = books.length - new Set(activeLoans.map(l => l.bookId)).size;
+
+  const [showAddLoan, setShowAddLoan] = useState(false);
+  const [showAddBook, setShowAddBook] = useState(false);
+  const [showAddReader, setShowAddReader] = useState(false);
+
+  const addLoan = (loan) => {
+    updateAll(books, readers, [...loans, { ...loan, id: "l" + Date.now(), returned: false }]);
+    setShowAddLoan(false);
+    showToast("✓ השאלה נרשמה");
+  };
+
+  const addBook = (book) => {
+    const newBook = { ...book, id: "b" + Date.now(), addedAt: new Date().toISOString().split("T")[0] };
+    updateAll([...books, newBook], readers, loans);
+    showToast("✓ הספר נוסף בהצלחה");
+    return newBook;
+  };
+
+  const addReaderFromLoanModal = (reader) => {
+    const newReader = { ...reader, id: "r" + Date.now() };
+    updateAll(books, [...readers, newReader], loans);
+    showToast("✓ מנוי נוסף בהצלחה");
+    return newReader;
+  };
+
+  const addReader = (form) => {
+    updateAll(books, [...readers, { ...form, id: "r" + Date.now() }], loans);
+    setShowAddReader(false);
+    showToast("✓ מנוי נוסף בהצלחה");
+  };
+
+  const addBookFromOverview = (book) => {
+    addBook(book);
+    setShowAddBook(false);
+  };
 
   return (
     <div>
@@ -813,6 +848,21 @@ function Overview({ books, readers, loans }) {
         <div className="stat-card"><div className="stat-number">{activeLoans.length}</div><div className="stat-label">השאלות פעילות</div></div>
         <div className="stat-card"><div className="stat-number" style={{ color: overdue.length ? "var(--rust)" : "var(--sage)" }}>{overdue.length}</div><div className="stat-label">באיחור</div></div>
       </div>
+
+      <div style={{ marginTop:"1.5rem" }}>
+        <button
+          className="btn btn-primary"
+          style={{ width:"100%", maxWidth:"420px", display:"block", fontSize:"1.25rem", fontWeight:700, padding:"1rem", borderRadius:"6px" }}
+          onClick={() => setShowAddLoan(true)}
+        >
+          📋 השאלה חדשה
+        </button>
+        <div style={{ display:"flex", gap:"0.75rem", marginTop:"0.75rem", maxWidth:"420px" }}>
+          <button className="btn btn-secondary" style={{ flex:1, padding:"0.6rem" }} onClick={() => setShowAddReader(true)}>👥 מנוי חדש</button>
+          <button className="btn btn-secondary" style={{ flex:1, padding:"0.6rem" }} onClick={() => setShowAddBook(true)}>📚 ספר חדש</button>
+        </div>
+      </div>
+
       {overdue.length > 0 && (
         <div style={{ background:"#fff5f5", border:"1.5px solid var(--rust)", borderRadius:"3px", padding:"1rem", marginTop:"1rem" }}>
           <strong style={{ fontFamily:"'Alef',Arial,sans-serif", fontWeight:700, color:"var(--rust)" }}>⚠️ ספרים באיחור:</strong>
@@ -823,6 +873,18 @@ function Overview({ books, readers, loans }) {
           </ul>
         </div>
       )}
+
+      {showAddLoan && (
+        <AddLoanModal
+          books={books} readers={readers} loans={loans}
+          onAdd={addLoan}
+          onAddBook={addBook}
+          onAddReader={addReaderFromLoanModal}
+          onClose={() => setShowAddLoan(false)}
+        />
+      )}
+      {showAddBook && <AddBookModal onAdd={addBookFromOverview} onClose={() => setShowAddBook(false)} />}
+      {showAddReader && <AddReaderModal onAdd={addReader} onClose={() => setShowAddReader(false)} />}
     </div>
   );
 }
@@ -1432,14 +1494,56 @@ function AddLoanModal({ books, readers, loans, onAdd, onAddBook, onAddReader, on
   );
 }
 
+// ── ADD READER MODAL ──
+function AddReaderModal({ onAdd, onClose }) {
+  const [form, setForm] = useState({ firstName:"", lastName:"", phone:"", pin:"" });
+  const [err, setErr] = useState("");
+  const set = (k,v) => setForm(f => ({...f,[k]:v}));
+
+  const submit = () => {
+    if (!form.firstName.trim() || !form.phone.trim() || !form.pin.trim()) {
+      setErr("יש למלא שם פרטי, טלפון וקוד אישי"); return;
+    }
+    if (!/^\d{4}$/.test(form.pin)) {
+      setErr("קוד אישי חייב להיות 4 ספרות"); return;
+    }
+    onAdd(form);
+  };
+
+  return (
+    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="modal">
+        <h3 className="modal-title">הוספת מנוי חדש</h3>
+        {[["firstName","שם פרטי"],["lastName","שם משפחה"]].map(([k,l]) => (
+          <div className="form-group" key={k}>
+            <label>{l}</label>
+            <input value={form[k]} onChange={e => set(k,e.target.value)} placeholder={l} />
+          </div>
+        ))}
+        <div className="form-group">
+          <label>טלפון</label>
+          <input value={form.phone} onChange={e => set("phone", formatPhone(e.target.value))} placeholder="052-1234567" />
+        </div>
+        <div className="form-group">
+          <label>קוד אישי (4 ספרות)</label>
+          <input type="password" value={form.pin} onChange={e => set("pin",e.target.value)} maxLength={4} placeholder="••••" />
+        </div>
+        {err && <div style={{ color:"var(--rust)", fontSize:"0.85rem", marginBottom:"0.4rem" }}>{err}</div>}
+        <div className="modal-actions">
+          <button className="btn btn-primary" onClick={submit}>הוסף</button>
+          <button className="btn btn-secondary" onClick={onClose}>ביטול</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── READERS MANAGER ──
 function ReadersManager({ readers, updateAll, showToast }) {
   const [showAdd, setShowAdd] = useState(false);
   const [search, setSearch] = useState("");
-  const [form, setForm] = useState({ firstName:"", lastName:"", phone:"", pin:"" });
   const [editPinId, setEditPinId] = useState(null);
   const [newPin, setNewPin] = useState("");
-  const set = (k,v) => setForm(f => ({...f,[k]:v}));
 
   const filtered = readers.filter(r => {
     if (!search.trim()) return true;
@@ -1447,10 +1551,8 @@ function ReadersManager({ readers, updateAll, showToast }) {
     return r.firstName?.includes(q) || r.lastName?.includes(q) || r.phone?.includes(q);
   });
 
-  const addReader = () => {
-    if (!form.firstName || !form.phone || !form.pin) return;
+  const addReader = (form) => {
     updateAll([...readers, { ...form, id: "r" + Date.now() }]);
-    setForm({ firstName:"", lastName:"", phone:"", pin:"" });
     setShowAdd(false);
     showToast("✓ מנוי נוסף בהצלחה");
   };
@@ -1509,31 +1611,7 @@ function ReadersManager({ readers, updateAll, showToast }) {
           </tbody>
         </table>
       </div>
-      {showAdd && (
-        <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setShowAdd(false)}>
-          <div className="modal">
-            <h3 className="modal-title">הוספת מנוי חדש</h3>
-            {[["firstName","שם פרטי"],["lastName","שם משפחה"]].map(([k,l]) => (
-              <div className="form-group" key={k}>
-                <label>{l}</label>
-                <input value={form[k]} onChange={e => set(k,e.target.value)} placeholder={l} />
-              </div>
-            ))}
-            <div className="form-group">
-              <label>טלפון</label>
-              <input value={form.phone} onChange={e => set("phone", formatPhone(e.target.value))} placeholder="052-1234567" />
-            </div>
-            <div className="form-group">
-              <label>קוד אישי (4 ספרות)</label>
-              <input type="password" value={form.pin} onChange={e => set("pin",e.target.value)} maxLength={4} placeholder="••••" />
-            </div>
-            <div className="modal-actions">
-              <button className="btn btn-primary" onClick={addReader}>הוסף</button>
-              <button className="btn btn-secondary" onClick={() => setShowAdd(false)}>ביטול</button>
-            </div>
-          </div>
-        </div>
-      )}
+      {showAdd && <AddReaderModal onAdd={addReader} onClose={() => setShowAdd(false)} />}
     </div>
   );
 }
