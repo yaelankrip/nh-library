@@ -1249,6 +1249,7 @@ function AddLoanModal({ books, readers, loans, onAdd, onAddBook, onAddReader, on
   const twoWeeks = new Date(Date.now() + 14 * 86400000).toISOString().split("T")[0];
   const [form, setForm] = useState({ bookId:"", readerId:"", loanDate: today, returnDate: twoWeeks });
   const [bookSearch, setBookSearch] = useState("");
+  const [readerSearch, setReaderSearch] = useState("");
 
   const [showNewBook, setShowNewBook] = useState(false);
   const [newBookTitle, setNewBookTitle] = useState("");
@@ -1267,6 +1268,15 @@ function AddLoanModal({ books, readers, loans, onAdd, onAddBook, onAddReader, on
   );
 
   const selectedBook = books.find(b => b.id === form.bookId);
+
+  const filteredReaders = readers.filter(r =>
+    !readerSearch.trim() ||
+    r.firstName?.includes(readerSearch.trim()) ||
+    r.lastName?.includes(readerSearch.trim()) ||
+    r.phone?.includes(readerSearch.trim())
+  );
+
+  const selectedReader = readers.find(r => r.id === form.readerId);
 
   const submit = () => {
     if (!form.bookId || !form.readerId || !form.returnDate) return;
@@ -1353,10 +1363,28 @@ function AddLoanModal({ books, readers, loans, onAdd, onAddBook, onAddReader, on
         </div>
         <div className="form-group">
           <label>מנוי</label>
-          <select value={form.readerId} onChange={e => set("readerId",e.target.value)}>
-            <option value="">בחר מנוי...</option>
-            {readers.map(r => <option key={r.id} value={r.id}>{r.firstName} {r.lastName}</option>)}
-          </select>
+          {selectedReader ? (
+            <div style={{ display:"flex", gap:"0.5rem", alignItems:"center" }}>
+              <span style={{ flex:1, padding:"0.4rem 0.6rem", border:"1px solid #ccc", borderRadius:"3px", background:"#f9f6f1" }}>
+                {selectedReader.firstName} {selectedReader.lastName} — {selectedReader.phone}
+              </span>
+              <button className="btn btn-sm btn-secondary" onClick={() => { set("readerId",""); setReaderSearch(""); }}>שנה</button>
+            </div>
+          ) : (
+            <>
+              <input
+                value={readerSearch}
+                onChange={e => setReaderSearch(e.target.value)}
+                placeholder="חפש/י שם או טלפון..."
+                style={{ marginBottom:"0.4rem" }}
+              />
+              <select size={5} value={form.readerId} onChange={e => { set("readerId", e.target.value); setReaderSearch(""); }}
+                style={{ width:"100%", borderRadius:"3px", border:"1px solid #ccc" }}>
+                <option value="">בחר מנוי...</option>
+                {filteredReaders.map(r => <option key={r.id} value={r.id}>{r.firstName} {r.lastName} — {r.phone}</option>)}
+              </select>
+            </>
+          )}
           {!showNewReader ? (
             <button type="button" className="btn-link" style={{ fontSize:"0.85rem", marginTop:"0.4rem" }} onClick={() => setShowNewReader(true)}>
               ➕ המנוי לא נמצא? הוסף מנוי חדש
